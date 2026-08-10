@@ -1,17 +1,18 @@
 import asyncio
 import os
 import re
+from pathlib import Path
 from typing import Union
 
 import aiofiles
 import aiohttp
 import yt_dlp
+from dotenv import load_dotenv
 from py_yt import Playlist, VideosSearch
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import Message
 
 from SIMPLE_MUSIC.utils.formatters import time_to_seconds
-from SIMPLE_MUSIC.utils.youtube_cookies import yt_dlp_options
 
 from config import (
     API_KEY,
@@ -22,10 +23,20 @@ from config import (
 )
 
 
+load_dotenv()
+
+
 DOWNLOAD_DIR = "downloads"
+COOKIE_FILE = Path(DOWNLOAD_DIR) / "cookies.txt"
+YOUTUBE_COOKIES_URL = os.getenv(
+    "YOUTUBE_COOKIES_URL",
+    "",
+).strip()
+
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 CLIENT_SESSION = None
+COOKIE_DOWNLOAD_TASK = None
 
 
 async def get_session():
@@ -33,10 +44,147 @@ async def get_session():
 
     if CLIENT_SESSION is None or CLIENT_SESSION.closed:
         CLIENT_SESSION = aiohttp.ClientSession(
-            connector=aiohttp.TCPConnector(limit=0)
+            connector=aiohttp.TCPConnector(limit=0),
         )
 
     return CLIENT_SESSION
+
+
+async def prepare_youtube_cookies():
+    """
+    YOUTUBE_COOKIES_URL se Netscape-format cookies.txt download karta hai.
+
+    Cookie URL ko environment variable/secret me rakhein.
+    Cookies ko GitHub repository me commit na karein.
+    """
+
+    global COOKIE_DOWNLOAD_TASK
+
+    if not YOUTUBE_COOKIES_URL:
+        return None
+
+    if (
+        COOKIE_FILE.exists()
+        and COOKIE_FILE.stat().st_size > 20
+    ):
+        return str(COOKIE_FILE)
+
+    if COOKIE_DOWNLOAD_TASK is None:
+        COOKIE_DOWNLOAD_TASK = asyncio.create_task(
+            _download_youtube_cookies(),
+        )
+
+    try:
+        return await COOKIE_DOWNLOAD_TASK
+    except Exception:
+        COOKIE_DOWNLOAD_TASK = None
+        return None
+
+
+async def _download_youtube_cookies():
+    temporary_file = Path(
+        f"{COOKIE_FILE}.tmp",
+    )
+
+    try:
+        COOKIE_FILE.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        timeout = aiohttp.ClientTimeout(
+            total=60,
+            connect=20,
+            sock_read=40,
+        )
+
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (X11; Linux x86_64) "
+                "AppleWebKit/537.36 "
+                "(KHTML, like Gecko) "
+                "Chrome/125.0 Safari/537.36"
+            ),
+        }
+
+        async with aiohttp.ClientSession(
+            timeout=timeout,
+            headers=headers,
+        ) as session:
+            async with session.get(
+                YOUTUBE_COOKIES_URL,
+                allow_redirects=True,
+            ) as response:
+                if response.status != 200:
+                    return None
+
+                cookie_data = await response.read()
+
+        if not cookie_data or len(cookie_data) < 20:
+            return None
+
+        cookie_text = cookie_data.decode(
+            "utf-8",
+            errors="ignore",
+        )
+
+        is_netscape_cookie_file = (
+            "# Netscape HTTP Cookie File" in cookie_text
+            or "# HTTP Cookie File" in cookie_text
+            or ".youtube.com" in cookie_text
+        )
+
+        if not is_netscape_cookie_file:
+            return None
+
+        with open(temporary_file, "wb") as file:
+            file.write(cookie_data)
+
+        os.replace(
+            temporary_file,
+            COOKIE_FILE,
+        )
+
+        try:
+            COOKIE_FILE.chmod(0o600)
+        except OSError:
+            pass
+
+        return str(COOKIE_FILE)
+
+    except Exception:
+        return None
+
+    finally:
+        try:
+            if temporary_file.exists():
+                temporary_file.unlink()
+        except OSError:
+            pass
+
+
+async def get_ytdl_options(extra_options=None):
+    """
+    Common yt-dlp options banata hai.
+    Agar YOUTUBE_COOKIES_URL set hai to local cookie file automatically use hoti hai.
+    """
+
+    cookie_file = await prepare_youtube_cookies()
+
+    options = {
+        "quiet": True,
+        "no_warnings": True,
+        "nocheckcertificate": True,
+        "geo_bypass": True,
+    }
+
+    if cookie_file:
+        options["cookiefile"] = cookie_file
+
+    if extra_options:
+        options.update(extra_options)
+
+    return options
 
 
 async def _download_stream(
@@ -65,7 +213,7 @@ async def _download_stream(
                 mode="wb",
             ) as file:
                 async for chunk in response.content.iter_chunked(
-                    2 * 1024 * 1024
+                    2 * 1024 * 1024,
                 ):
                     await file.write(chunk)
 
@@ -81,7 +229,7 @@ async def _download_stream(
     if os.path.exists(file_path):
         try:
             os.remove(file_path)
-        except Exception:
+        except OSError:
             pass
 
     return None
@@ -94,7 +242,6 @@ async def engine_shrutibots(
 ):
     try:
         session = await get_session()
-
         media_type = "video" if is_video else "audio"
 
         async with session.get(
@@ -138,7 +285,6 @@ async def engine_xbit(
 
     try:
         session = await get_session()
-
         headers = {
             "x-api-key": YT_API_KEY,
         }
@@ -233,7 +379,6 @@ async def _core_download(
     is_video: bool,
 ):
     vid_id = get_video_id(link)
-
     extension = "mp4" if is_video else "mp3"
 
     final_path = os.path.join(
@@ -253,21 +398,21 @@ async def _core_download(
                 vid_id,
                 is_video,
                 f"{final_path}.shruti",
-            )
+            ),
         ),
         asyncio.create_task(
             engine_xbit(
                 vid_id,
                 is_video,
                 f"{final_path}.xbit",
-            )
+            ),
         ),
         asyncio.create_task(
             engine_nexgen(
                 vid_id,
                 is_video,
                 f"{final_path}.nexgen",
-            )
+            ),
         ),
     ]
 
@@ -293,37 +438,34 @@ async def _core_download(
         try:
             os.replace(winner, final_path)
             return final_path
-        except Exception:
+        except OSError:
             return winner
+
+    options = await get_ytdl_options(
+        {
+            "format": (
+                "bestvideo[height<=480]"
+                "[fps<=30][ext=mp4]+"
+                "bestaudio[ext=m4a]/best"
+                if is_video
+                else "bestaudio/best"
+            ),
+            "outtmpl": final_path,
+            "ignoreerrors": True,
+        },
+    )
+
+    if not is_video:
+        options["postprocessors"] = [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+            },
+        ]
 
     loop = asyncio.get_running_loop()
 
     def fallback_ytdl():
-        if is_video:
-            media_format = (
-                "bestvideo[height<=480]"
-                "[fps<=30][ext=mp4]+"
-                "bestaudio[ext=m4a]/best"
-            )
-        else:
-            media_format = "bestaudio/best"
-
-        options = yt_dlp_options(
-            {
-                "format": media_format,
-                "outtmpl": final_path,
-                "ignoreerrors": True,
-            }
-        )
-
-        if not is_video:
-            options["postprocessors"] = [
-                {
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "mp3",
-                }
-            ]
-
         with yt_dlp.YoutubeDL(options) as ydl:
             ydl.download([link])
 
@@ -337,6 +479,16 @@ async def _core_download(
         and os.path.getsize(final_path) > 1024
     ):
         return final_path
+
+    # FFmpeg kabhi-kabhi final filename ko extension ke saath banata hai.
+    if not is_video:
+        generated_mp3 = os.path.splitext(final_path)[0] + ".mp3"
+
+        if (
+            os.path.exists(generated_mp3)
+            and os.path.getsize(generated_mp3) > 1024
+        ):
+            return generated_mp3
 
     return None
 
@@ -360,19 +512,15 @@ class YouTubeAPI:
         self.base = (
             "https://www.youtube.com/watch?v="
         )
-
         self.regex = r"(?:youtube\.com|youtu\.be)"
-
         self.status = (
             "https://www.youtube.com/oembed?url="
         )
-
         self.listbase = (
             "https://youtube.com/playlist?list="
         )
-
         self.reg = re.compile(
-            r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])"
+            r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])",
         )
 
     async def exists(
@@ -393,7 +541,7 @@ class YouTubeAPI:
 
         if message_1.reply_to_message:
             messages.append(
-                message_1.reply_to_message
+                message_1.reply_to_message,
             )
 
         for message in messages:
@@ -406,7 +554,7 @@ class YouTubeAPI:
                     )
 
                     return text[
-                        entity.offset : entity.offset
+                        entity.offset: entity.offset
                         + entity.length
                     ]
 
@@ -442,7 +590,6 @@ class YouTubeAPI:
             return None, None, 0, None, None
 
         result = result_list[0]
-
         title = result["title"]
         duration_min = result["duration"]
         thumbnail = result["thumbnails"][0]["url"].split("?")[0]
@@ -583,7 +730,7 @@ class YouTubeAPI:
         if "&" in link:
             link = link.split("&")[0]
 
-        options = yt_dlp_options()
+        options = await get_ytdl_options()
 
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(
@@ -602,7 +749,7 @@ class YouTubeAPI:
             }
             for item in info.get("formats", [])
             if "dash" not in str(
-                item.get("format", "")
+                item.get("format", ""),
             ).lower()
         ]
 
@@ -690,23 +837,23 @@ class YouTubeAPI:
             except Exception:
                 pass
 
+            if is_video:
+                media_format = (
+                    "bestvideo[height<=480]"
+                    "+bestaudio/best"
+                )
+            else:
+                media_format = "bestaudio/best"
+
+            options = await get_ytdl_options(
+                {
+                    "format": media_format,
+                },
+            )
+
             loop = asyncio.get_running_loop()
 
             def extract_direct_url():
-                if is_video:
-                    media_format = (
-                        "bestvideo[height<=480]"
-                        "+bestaudio/best"
-                    )
-                else:
-                    media_format = "bestaudio/best"
-
-                options = yt_dlp_options(
-                    {
-                        "format": media_format,
-                    }
-                )
-
                 with yt_dlp.YoutubeDL(options) as ydl:
                     info = ydl.extract_info(
                         link,
@@ -727,6 +874,16 @@ class YouTubeAPI:
             except Exception:
                 pass
 
-        try: **…**
+        try:
+            result = await _core_download(
+                link,
+                is_video,
+            )
 
-_This response is too long to display in full._
+            if result:
+                return result, True
+
+            return None, False
+
+        except Exception:
+            return None, False
