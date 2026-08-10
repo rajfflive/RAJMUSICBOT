@@ -1,21 +1,13 @@
 # 🔹 Customized & Branded by: Rajbots
-# 🔗 Project: https://github.com/rajfflive/RAJMUSICBOT/new/main
+# 🔗 Project: https://github.com/rajfflive/RAJMUSICBOT
 # -----------------------------------------------
-# 🔸 SIMPLE MUSIC Project
-# 🔹 Developed & Maintained by: Rajbots (https://github.com/rajfflive/RAJMUSICBOT/new/main)
-# 📅 Copyright © 2026 – All Rights Reserved
-#
-# 📖 License:
-# This source code is open for educational and non-commercial use ONLY.
-# You are required to retain this credit in all copies or substantial portions of this file.
-# Commercial use, redistribution, or removal of this notice is strictly prohibited
-# without prior written permission from the author.
-#
-# ❤️ Made with dedication and love by Rajbots
+# 🔸 RAJ MUSIC BOT
+# 🔹 Developed and maintained by Rajbots
 # -----------------------------------------------
 
 import asyncio
 import importlib
+
 from pyrogram import idle
 from pyrogram.types import BotCommand
 from pytgcalls.exceptions import NoActiveGroupCall
@@ -26,21 +18,72 @@ from SIMPLE_MUSIC import LOGGER, app, userbot
 from SIMPLE_MUSIC.core.call import SIMPLE
 from SIMPLE_MUSIC.misc import sudo
 from SIMPLE_MUSIC.plugins import ALL_MODULES
-from SIMPLE_MUSIC.utils.database import get_banned_users, get_gbanned
+from SIMPLE_MUSIC.utils.database import (
+    get_banned_users,
+    get_gbanned,
+)
+
 
 COMMANDS = [
-    BotCommand("start", "❖ sᴛᴀʀᴛ ʙᴏᴛ • ᴛᴏ sᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ"),
-    BotCommand("help", "❖ ʜᴇʟᴘ ᴍᴇɴᴜ • ɢᴇᴛ ᴀʟʟ ᴄᴏᴍᴍᴀɴᴅs ᴀɴᴅ ᴍᴀɴᴀɢᴇᴍᴇɴᴛ"),
-    BotCommand("ping", "❖ ᴘɪɴɢ ʙᴏᴛ • ᴄʜᴇᴄᴋ ᴘɪɴɢ ᴀɴᴅ sʏsᴛᴇᴍ sᴛᴀᴛs"),
+    BotCommand(
+        "start",
+        "Start the bot",
+    ),
+    BotCommand(
+        "help",
+        "Get help and commands",
+    ),
+    BotCommand(
+        "ping",
+        "Check bot status",
+    ),
+    BotCommand(
+        "play",
+        "Play music in voice chat",
+    ),
+]
+
+
+# These modules contain the music and voice-chat handlers.
+# They are outside the plugins folder, so they must be loaded separately.
+PLAY_MODULES = [
+    "play.play",
+    "play.channel",
+    "play.live",
+    "play.playmode",
 ]
 
 
 async def setup_bot_commands():
     try:
         await app.set_bot_commands(COMMANDS)
-        LOGGER("SIMPLE_MUSIC").info("Bot commands set successfully!")
-    except Exception as e:
-        LOGGER("SIMPLE_MUSIC").error(f"Failed to set bot commands: {str(e)}")
+        LOGGER("SIMPLE_MUSIC").info(
+            "Bot commands set successfully!"
+        )
+    except Exception as error:
+        LOGGER("SIMPLE_MUSIC").error(
+            f"Failed to set bot commands: {error}"
+        )
+
+
+def load_bot_modules():
+    """
+    Load all normal plugins and all music/voice-chat modules.
+    """
+
+    # Load modules from SIMPLE_MUSIC/plugins/
+    for module in ALL_MODULES:
+        module_name = f"SIMPLE_MUSIC.plugins{module}"
+        importlib.import_module(module_name)
+
+    # Load modules from SIMPLE_MUSIC/play/
+    for module in PLAY_MODULES:
+        module_name = f"SIMPLE_MUSIC.{module}"
+        importlib.import_module(module_name)
+
+    LOGGER("SIMPLE_MUSIC.plugins").info(
+        "All bot and music modules loaded successfully."
+    )
 
 
 async def init():
@@ -52,33 +95,38 @@ async def init():
         and not config.STRING5
     ):
         LOGGER(__name__).error(
-            "𝐒𝐭𝐫𝐢𝐧𝐠 𝐒𝐞𝐬𝐬𝐢𝐨𝐧 𝐍𝐨𝐭 𝐅𝐢𝐥𝐥𝐞𝐝, 𝐏𝐥𝐞𝐚𝐬𝐞 𝐅𝐢𝐥𝐥 𝐀 𝐏𝐲𝐫𝐨𝐠𝐫𝐚𝐦 𝐒𝐞𝐬𝐬𝐢𝐨𝐧"
+            "STRING_SESSION is not configured. "
+            "Please add a Pyrogram session string."
         )
-        exit()
+        return
 
     await sudo()
 
     try:
-        users = await get_gbanned()
-        for user_id in users:
+        global_banned_users = await get_gbanned()
+
+        for user_id in global_banned_users:
             BANNED_USERS.add(user_id)
 
-        users = await get_banned_users()
-        for user_id in users:
+        banned_users = await get_banned_users()
+
+        for user_id in banned_users:
             BANNED_USERS.add(user_id)
 
-    except:
-        pass
+    except Exception as error:
+        LOGGER("SIMPLE_MUSIC").error(
+            f"Could not load banned users: {error}"
+        )
 
     await app.start()
-    
     await setup_bot_commands()
 
-    for all_module in ALL_MODULES:
-        importlib.import_module("SIMPLE_MUSIC.plugins" + all_module)
+    # Important:
+    # This must run before the bot starts accepting commands.
+    load_bot_modules()
 
-    LOGGER("SIMPLE_MUSIC.plugins").info(
-        "𝐒𝐢𝐦𝐩𝐥𝐞 𝐁𝐨𝐲 𝐈𝐬 𝐁𝐫𝐚𝐧𝐝🥳..."
+    LOGGER("SIMPLE_MUSIC").info(
+        "Music Bot started as RAJBOTSBOT."
     )
 
     await userbot.start()
@@ -91,17 +139,22 @@ async def init():
 
     except NoActiveGroupCall:
         LOGGER("SIMPLE_MUSIC").error(
-            "𝗣𝗹𝗭 𝗦𝗧𝗔𝗥𝗧 𝗬𝗢𝗨𝗥 𝗟𝗢𝗚 𝗚𝗥𝗢𝗨𝗣 𝗩𝗢𝗜𝗖𝗘𝗖𝗛𝗔𝗧\\𝗖𝗛𝗔𝗡𝗡𝗘𝗟\n\n𝗦𝗜𝗠𝗣𝗟𝗘 𝗕𝗢𝗧 𝗦𝗧𝗢𝗣........"
+            "Please start a voice chat in your log group/channel "
+            "before starting the music bot."
         )
-        exit()
+        await app.stop()
+        await userbot.stop()
+        return
 
-    except:
-        pass
+    except Exception as error:
+        LOGGER("SIMPLE_MUSIC").error(
+            f"Initial stream check failed: {error}"
+        )
 
     await SIMPLE.decorators()
 
     LOGGER("SIMPLE_MUSIC").info(
-        "╔═════ஜ۩۞۩ஜ════╗\n  ☠︎︎𝗠𝗔𝗗𝗘 𝗕𝗬 𝗦𝗜𝗠𝗣𝗟𝗘 𝗕𝗢𝗬\n╚═════ஜ۩۞۩ஜ════╝"
+        "RAJ MUSIC BOT is fully started and ready."
     )
 
     await idle()
@@ -110,7 +163,7 @@ async def init():
     await userbot.stop()
 
     LOGGER("SIMPLE_MUSIC").info(
-        "𝗦𝗧𝗢𝗣 𝗦𝗜𝗠𝗣𝗟𝗘 𝗠𝗨𝗦𝗜𝗖🎻 𝗕𝗢𝗧.."
+        "RAJ MUSIC BOT stopped."
     )
 
 
