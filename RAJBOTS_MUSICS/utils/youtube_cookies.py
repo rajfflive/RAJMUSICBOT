@@ -12,17 +12,19 @@ COOKIE_FILE = DOWNLOAD_DIR / "cookies.txt"
 
 async def refresh_youtube_cookies():
     """
-    YOUTUBE_COOKIES_URL se Netscape cookies file download karta hai.
-
-    Cookie file ko public GitHub repository me store na karein.
-    URL ko Replit Secret/Environment Variable me rakhein.
+    Private URL se cookies.txt download karke local file banata hai.
     """
 
     if not YOUTUBE_COOKIES_URL:
         return None
 
+    temporary_file = DOWNLOAD_DIR / "cookies.txt.tmp"
+
     try:
-        DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        DOWNLOAD_DIR.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
         timeout = aiohttp.ClientTimeout(
             total=60,
@@ -60,28 +62,27 @@ async def refresh_youtube_cookies():
             errors="ignore",
         )
 
-        # Netscape cookie file ka basic validation
-        valid_cookie_file = (
+        is_netscape_file = (
             "# Netscape HTTP Cookie File" in cookie_text
             or "# HTTP Cookie File" in cookie_text
             or ".youtube.com" in cookie_text
         )
 
-        if not valid_cookie_file:
+        if not is_netscape_file:
             return None
-
-        temporary_file = DOWNLOAD_DIR / "cookies.txt.tmp"
 
         with open(temporary_file, "wb") as file:
             file.write(cookie_data)
 
-        os.replace(temporary_file, COOKIE_FILE)
+        os.replace(
+            temporary_file,
+            COOKIE_FILE,
+        )
 
         return str(COOKIE_FILE)
 
     except Exception:
         try:
-            temporary_file = DOWNLOAD_DIR / "cookies.txt.tmp"
             if temporary_file.exists():
                 temporary_file.unlink()
         except Exception:
@@ -91,11 +92,10 @@ async def refresh_youtube_cookies():
 
 
 def get_cookie_file():
-    """
-    yt-dlp ke liye local cookie file ka path return karta hai.
-    """
-
-    if COOKIE_FILE.exists() and COOKIE_FILE.stat().st_size > 20:
+    if (
+        COOKIE_FILE.exists()
+        and COOKIE_FILE.stat().st_size > 20
+    ):
         return str(COOKIE_FILE)
 
     return None
@@ -103,8 +103,8 @@ def get_cookie_file():
 
 def yt_dlp_options(extra_options=None):
     """
-    Common yt-dlp options banata hai aur available hone par
-    cookiefile automatically add karta hai.
+    Har yt-dlp call ke liye common options.
+    Cookie file available ho to automatically use hoti hai.
     """
 
     options = {
