@@ -1,0 +1,7 @@
+# Customized & Branded by: Rajbots
+# Project: https://github.com/rajfflive/RAJMUSICBOT/new/main
+build:
+  docker:
+    worker: Dockerfile
+run:
+  worker: bash start
