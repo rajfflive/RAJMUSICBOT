@@ -1,16 +1,26 @@
-# Customized & Branded by: Rajbots
-# Project: https://github.com/rajfflive/RAJMUSICBOT/new/main
-FROM nikolaik/python-nodejs:python3.10-nodejs20
+FROM python:3.10-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
-    && apt-get clean \
+    && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        git \
+        curl \
+        ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+COPY requirements.txt .
+
+RUN python -m pip install --upgrade pip \
+    && python -m pip install -r requirements.txt
+
 COPY . .
 
-RUN pip3 install --no-cache-dir --upgrade pip \
-    && pip3 install --no-cache-dir --upgrade -r requirements.txt
+RUN chmod +x start
 
-CMD bash start
+CMD ["bash", "start"]
