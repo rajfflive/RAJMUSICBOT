@@ -1,1 +1,11 @@
-python3 -m SIMPLE_MUSIC
+#!/usr/bin/env bash
+
+set -e
+
+cd "$(dirname "$0")"
+
+if [ ! -e SIMPLE_MUSIC ]; then
+    ln -s RAJBOTS_MUSICS SIMPLE_MUSIC
+fi
+
+exec python3 -m SIMPLE_MUSIC
