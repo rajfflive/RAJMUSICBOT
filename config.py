@@ -52,6 +52,8 @@ API_URL = getenv("API_URL", "https://api.nexgenbots.xyz") #youtube song url
 VIDEO_API_URL = getenv("VIDEO_API_URL", 'https://api.video.nexgenbots.xyz')
 API_KEY = getenv("API_KEY", "") # youtube song api key, generate free key or buy paid plan from https://console.nexgenbots.xyz
 
+#youtube cookies url #dont paste here use in (env) 
+YOUTUBE_COOKIES_URL = getenv("YOUTUBE_COOKIES_URL", "").strip()
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ❖ ʟ ɪ ᴍ ɪ ᴛ s   ᴀ ɴ ᴅ   ɪ ᴅ s ❖
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
