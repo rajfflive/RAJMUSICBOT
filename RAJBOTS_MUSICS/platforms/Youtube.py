@@ -3,6 +3,7 @@ import os
 import re
 from pathlib import Path
 from typing import Union
+from urllib.parse import urlsplit, urlunsplit
 
 import aiofiles
 import aiohttp
@@ -37,6 +38,61 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 CLIENT_SESSION = None
 COOKIE_DOWNLOAD_TASK = None
+
+
+def normalize_cookie_url(url: str) -> str:
+    """
+    Normal URL ko downloadable raw URL me convert karta hai.
+
+    Supported examples:
+        https://batbin.me/oswald
+        https://www.batbin.me/oswald
+        https://batbin.me/raw/oswald
+
+    Batbin ke alawa kisi URL ko unchanged rakhta hai.
+    """
+
+    if not url:
+        return ""
+
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return url
+
+    hostname = (parsed.hostname or "").lower()
+
+    if hostname not in {
+        "batbin.me",
+        "www.batbin.me",
+        "p.batbin.me",
+    }:
+        return url
+
+    paste_id = parsed.path.strip("/")
+
+    if not paste_id:
+        return url
+
+    if paste_id.startswith("raw/"):
+        raw_path = f"/{paste_id}"
+    else:
+        raw_path = f"/raw/{paste_id}"
+
+    return urlunsplit(
+        (
+            "https",
+            "batbin.me",
+            raw_path,
+            "",
+            "",
+        )
+    )
+
+
+YOUTUBE_COOKIES_URL = normalize_cookie_url(
+    YOUTUBE_COOKIES_URL,
+)
 
 
 async def get_session():
